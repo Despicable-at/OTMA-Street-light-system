@@ -10,3 +10,9 @@ supabase/functions/.env.*
 coverage/
 .DS_Store
 Thumbs.db
+.env
+.env.*
+node_modules/
+supabase/.temp/
+supabase/.branches/
+*.log
