@@ -1,0 +1,23 @@
+{
+  "name": "otma-streetlight-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Supabase/PostgreSQL backend and Edge Functions for the OTMA Streetlight Portal",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check-project.mjs",
+    "test:all": "npm run check && npm test",
+    "test:database": "npx --yes supabase test db",
+    "supabase:login": "npx --yes supabase login",
+    "supabase:link": "npx --yes supabase link",
+    "db:push": "npx --yes supabase db push --remote",
+    "db:reset": "npx --yes supabase db reset",
+    "functions:serve": "npx --yes supabase functions serve --env-file supabase/functions/.env",
+    "functions:deploy": "npx --yes supabase functions deploy --use-api",
+    "secrets:deploy": "npx --yes supabase secrets set --env-file .env.production"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

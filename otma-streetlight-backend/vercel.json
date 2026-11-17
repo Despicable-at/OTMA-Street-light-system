@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/docs/index.html" },
+    { "source": "/api-docs", "destination": "/docs/index.html" },
+    { "source": "/openapi.yaml", "destination": "/docs/openapi.yaml" }
+  ],
+  "headers": [
+    {
+      "source": "/docs/openapi.yaml",
+      "headers": [
+        { "key": "Content-Type", "value": "application/yaml; charset=utf-8" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
+}

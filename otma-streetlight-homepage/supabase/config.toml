@@ -1,0 +1,25 @@
+project_id = "otma-streetlight-portal"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+major_version = 17
+
+[functions.create-report]
+verify_jwt = false
+
+[functions.track-report]
+verify_jwt = false
+
+[functions.public-stats]
+verify_jwt = false
+
+[functions.contact-message]
+verify_jwt = false
+
+[functions.admin-invite]
+verify_jwt = true

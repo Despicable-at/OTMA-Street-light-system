@@ -1,0 +1,45 @@
+project_id = "otma-streetlight-portal"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[functions.create-report]
+verify_jwt = false
+
+[functions.track-report]
+verify_jwt = false
+
+[functions.public-stats]
+verify_jwt = false
+
+[functions.contact-message]
+verify_jwt = false
+
+# These functions validate the staff JWT and active role inside the handler.
+[functions.admin-invite]
+verify_jwt = false
+
+[functions.report-action]
+verify_jwt = false
+
+[functions.photo-url]
+verify_jwt = false
+
+[auth]
+enable_signup = false
+
+[functions.maintenance-action]
+verify_jwt = false
+
+[functions.admin-overview]
+verify_jwt = false

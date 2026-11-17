@@ -1,0 +1,9 @@
+When integrating the backend with the existing Vercel frontend, copy all files from:
+  otma-streetlight-backend/docs/
+into:
+  otma-streetlight-homepage/api-docs/
+
+Keep index.html and openapi.yaml together. Vercel will then serve:
+  https://YOUR-FRONTEND-DOMAIN/api-docs/
+
+Add that exact docs origin to ALLOWED_ORIGINS only if browser-based Swagger Try it out will be used from a separate origin. If docs share the main Vercel origin, the existing site origin already covers it.

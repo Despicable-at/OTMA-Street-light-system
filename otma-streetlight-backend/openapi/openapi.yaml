@@ -1,0 +1,724 @@
+openapi: 3.1.0
+info:
+  title: OTMA Streetlight Portal API
+  version: 1.0.0
+  summary: API for public streetlight reporting and Assembly maintenance operations.
+  description: >-
+    OpenAPI contract for the Old Tafo Municipal Assembly Streetlight Portal.
+    Public endpoints never return reporter contact details or internal staff notes.
+    Administrative endpoints require a valid Supabase staff session and role checks.
+    Replace the server project reference before using Try it out.
+servers:
+  - url: https://{projectRef}.supabase.co/functions/v1
+    description: Supabase Edge Functions
+    variables:
+      projectRef:
+        default: YOUR_PROJECT_REF
+        description: Supabase project reference from Project Settings.
+tags:
+  - name: Public
+    description: Citizen-facing operations.
+  - name: Staff
+    description: Authenticated Assembly operations.
+security:
+  - PublishableKey: []
+paths:
+  /create-report:
+    post:
+      tags: [Public]
+      summary: Submit a streetlight fault report
+      description: Multipart submission. An optional photo is saved in a private bucket. A report reference is returned.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [report]
+              properties:
+                report:
+                  type: string
+                  description: JSON string with `latitude`, `longitude`, `phone`, `fault`, `description`; optional `light_id`, `name`, `nearby_landmark`.
+                  example: '{"light_id":"OTMA-SL-00001","latitude":6.735463,"longitude":-1.613031,"phone":"0241234567","fault":"not_working","description":"This streetlight has not switched on for three evenings."}'
+                photo:
+                  type: string
+                  format: binary
+                  description: Optional JPG, PNG or WebP photo, maximum 5 MB.
+      responses:
+        '201':
+          description: Report accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCreated'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMedia' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /track-report:
+    post:
+      tags: [Public]
+      summary: Track a report by reference
+      description: Returns workflow status and public timeline messages only. No reporter PII or internal notes are returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties:
+                reference:
+                  type: string
+                  pattern: '^OTMA-RPT-(?:20[0-9]{2}-[A-HJ-NP-Z2-9]{8}|[0-9]{5})$'
+                  example: OTMA-RPT-00001
+      responses:
+        '200':
+          description: Report tracking record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackedReportResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /public-stats:
+    get:
+      tags: [Public]
+      summary: Get aggregate public statistics
+      description: Returns non-personal aggregate counts and monthly trends. Rows marked `is_demo=true` are excluded.
+      responses:
+        '200':
+          description: Public aggregate statistics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicStats'
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /contact-message:
+    post:
+      tags: [Public]
+      summary: Submit a contact enquiry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, subject, message]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                email: { type: string, format: email, maxLength: 254 }
+                phone: { type: string, maxLength: 30 }
+                subject: { type: string, minLength: 3, maxLength: 160 }
+                message: { type: string, minLength: 10, maxLength: 3000 }
+      responses:
+        '201':
+          description: Message received.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  message_id: { type: string, format: uuid }
+                  received_at: { type: string, format: date-time }
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /admin-overview:
+    get:
+      tags: [Staff]
+      summary: Load the Assembly dashboard overview
+      description: >-
+        Requires an active staff session. Returns aggregate KPIs, safe fault-map points,
+        hazards, overdue reports, chronic-failure lights, recent public-safe activity and
+        area-outage clusters. Three or more open faults within 300 metres and 24 hours
+        form an outage alert. Technician sessions are restricted to assigned reports.
+        Reporter names, phone numbers, descriptions and internal notes are never returned.
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200':
+          description: Role-scoped dashboard overview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, refreshed_at, role, data_scope, metrics, fault_map, needs_attention, area_outages, activity]
+                properties:
+                  ok: { type: boolean }
+                  refreshed_at: { type: string, format: date-time }
+                  role: { type: string, enum: [administrator, assembly_officer, technician, auditor] }
+                  data_scope: { type: string, enum: [all_live_reports, assigned_reports_only] }
+                  metrics:
+                    type: object
+                    properties:
+                      total_lights: { type: integer }
+                      working_percentage: { type: [number, 'null'] }
+                      open_faults: { type: integer }
+                      new_reports: { type: integer }
+                      overdue_past_sla: { type: integer }
+                      under_repair: { type: integer }
+                      resolved_this_week: { type: integer }
+                      average_repair_hours: { type: [number, 'null'] }
+                      status_breakdown: { type: object, additionalProperties: { type: integer } }
+                  fault_map: { type: array, items: { type: object } }
+                  needs_attention: { type: object }
+                  area_outages: { type: array, items: { type: object } }
+                  activity: { type: array, items: { type: object } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /admin-invite:
+    post:
+      tags: [Staff]
+      summary: Invite an OTMA staff member
+      description: Administrator only. Invite emails are issued by Supabase Auth. The invited account must accept and set a password.
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, full_name, role]
+              properties:
+                email: { type: string, format: email }
+                full_name: { type: string, minLength: 2, maxLength: 120 }
+                role:
+                  type: string
+                  enum: [administrator, assembly_officer, technician, auditor]
+      responses:
+        '201': { description: Invitation created. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /report-action:
+    post:
+      tags: [Staff]
+      summary: Perform a report workflow action
+      description: >-
+        Supported actions are `verify`, `assign`, `start`, `awaiting_parts`, `resume`, `resolve`, `close`, and `add_note`.
+        Resolve must be sent as multipart form data and includes resolution_action, parts_used and after_photo.
+        A database trigger independently enforces legal state transitions and resolution evidence.
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference, action]
+              properties:
+                reference: { type: string, example: OTMA-RPT-00001 }
+                action: { type: string, enum: [verify, assign, start, awaiting_parts, resume, close, add_note] }
+                assigned_to: { type: string, format: uuid, description: Required for assign; must be an active technician. }
+                note: { type: string, maxLength: 3000, description: Required for add_note. }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [reference, action, resolution_action, parts_used, after_photo]
+              properties:
+                reference: { type: string, example: OTMA-RPT-00001 }
+                action: { type: string, enum: [resolve] }
+                resolution_action: { type: string, minLength: 10, maxLength: 2000 }
+                parts_used: { type: string, minLength: 1, maxLength: 1000, description: Enter None if no parts were used. }
+                after_photo: { type: string, format: binary, description: JPG, PNG or WebP, maximum 5 MB. }
+      responses:
+        '200': { description: Workflow action completed. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: The report changed concurrently; refresh and retry. }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMedia' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /maintenance-action:
+    post:
+      tags: [Staff]
+      summary: Create or update a maintenance job
+      description: Active Assembly Officers can create, assign, reschedule and cancel jobs. An assigned Technician or Officer can start, complete or note a job.
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [create, assign, start, complete, note, reschedule, cancel] }
+                id: { type: string, format: uuid, description: Required except for create. }
+                asset_label: { type: string, minLength: 2, maxLength: 160 }
+                task: { type: string, minLength: 3, maxLength: 1000 }
+                scheduled_for: { type: string, format: date }
+                streetlight_id: { type: string, pattern: '^OTMA-SL-[0-9]{5}$' }
+                report_reference: { type: string, example: OTMA-RPT-00001 }
+                assigned_to: { type: string, format: uuid }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Maintenance job updated. }
+        '201': { description: Maintenance job created. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: The job changed concurrently or is in the wrong state. }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /photo-url:
+    post:
+      tags: [Staff]
+      summary: Create a short-lived signed photo URL
+      description: Signed URLs expire after five minutes. Administrators, Assembly Officers, Auditors and the report's assigned Technician can request access.
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference, kind]
+              properties:
+                reference: { type: string, example: OTMA-RPT-00001 }
+                kind: { type: string, enum: [report, repair] }
+      responses:
+        '200':
+          description: Signed URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  signed_url: { type: string, format: uri }
+                  expires_in_seconds: { type: integer, example: 300 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /rest/v1/streetlights_public:
+    get:
+      tags: [Public]
+      summary: Read the public streetlight map inventory
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      parameters:
+        - in: query
+          name: select
+          schema: { type: string, default: "*" }
+          description: PostgREST projection. The view excludes demo assets and private staff/report fields.
+        - in: query
+          name: status
+          schema: { type: string }
+          description: Optional PostgREST filter, for example `eq.working`.
+      responses:
+        '200':
+          description: Public streetlight inventory rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PublicStreetlight' }
+
+  /rest/v1/communities:
+    get:
+      tags: [Public]
+      summary: Read active community names
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      parameters:
+        - in: query
+          name: select
+          schema: { type: string, default: "id,name,display_order" }
+      responses:
+        '200': { description: Active community records. }
+
+  /rest/v1/streetlights:
+    get:
+      tags: [Staff]
+      summary: Read the full streetlight inventory
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Staff-visible inventory records, including operational fields and demo flags. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Staff]
+      summary: Add a streetlight inventory record
+      description: Administrator or Assembly Officer only. Omit `id` to use the database-generated OTMA-SL-00001 sequence. For official bulk imports, retain the assigned asset IDs and resynchronise the sequence after import.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude, street, lamp_type]
+              properties:
+                id: { type: string, pattern: '^OTMA-SL-[0-9]{5}$' }
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+                community_id: { type: [string, 'null'], format: uuid }
+                street: { type: string, maxLength: 200 }
+                lamp_type: { type: string, maxLength: 80 }
+                status: { type: string, enum: [working, faulty, under_repair, out_of_service] }
+                last_repaired_date: { type: [string, 'null'], format: date }
+                pole_height_m: { type: [number, 'null'] }
+                wattage: { type: [integer, 'null'] }
+                pole_material: { type: [string, 'null'] }
+                pole_condition: { type: [string, 'null'] }
+                installation_date: { type: [string, 'null'], format: date }
+      responses:
+        '201': { description: Inventory record created. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /rest/v1/fault_reports:
+    get:
+      tags: [Staff]
+      summary: Read staff-visible fault reports
+      description: Officers and auditors can read all reports. Technicians can read only reports assigned to them. Reporter name and phone are never returned to public endpoints.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Staff-visible report rows subject to Row Level Security. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /rest/v1/report_events:
+    get:
+      tags: [Staff]
+      summary: Read report workflow events
+      description: Staff RLS limits technician access to reports assigned to them. Public tracking uses the `track-report` function and only returns public messages.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Staff-visible event rows. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /rest/v1/report_notes:
+    get:
+      tags: [Staff]
+      summary: Read internal report notes
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Internal staff notes, never exposed by the public tracker. }
+    post:
+      tags: [Staff]
+      summary: Add an internal report note
+      description: Administrator, Assembly Officer or assigned Technician. The note must contain 1–3,000 characters.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report_reference, note]
+              properties:
+                report_reference: { type: string }
+                note: { type: string, minLength: 1, maxLength: 3000 }
+      responses:
+        '201': { description: Internal note created. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /rest/v1/maintenance_jobs:
+    get:
+      tags: [Staff]
+      summary: Read maintenance inspections and work orders
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Jobs visible to the signed-in staff member under RLS. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /rest/v1/spare_parts:
+    get:
+      tags: [Staff]
+      summary: Read spare-parts balances and reorder levels
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Spare-parts catalogue. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /rest/v1/stock_movements:
+    get:
+      tags: [Staff]
+      summary: Read the append-only stock movement ledger
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Stock movement records visible to staff. }
+    post:
+      tags: [Staff]
+      summary: Record a spare-parts stock movement
+      description: Administrator or Assembly Officer only. The database trigger updates on-hand quantity atomically and rejects a movement that would make stock negative.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, quantity_delta, reason]
+              properties:
+                sku: { type: string }
+                quantity_delta: { type: integer, not: { const: 0 } }
+                reason: { type: string, minLength: 2, maxLength: 500 }
+                report_reference: { type: [string, 'null'] }
+      responses:
+        '201': { description: Stock movement recorded and balance updated. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /rest/v1/staff_directory:
+    get:
+      tags: [Staff]
+      summary: Read the safe staff assignment directory
+      description: Returns active staff names and roles without email or phone numbers.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Active staff directory. }
+
+  /rest/v1/staff_admin_directory:
+    get:
+      tags: [Staff]
+      summary: Read the administrator-only staff directory
+      description: Includes staff email and phone details. Administrator role required.
+      servers:
+        - url: https://{projectRef}.supabase.co
+          variables:
+            projectRef: { default: YOUR_PROJECT_REF }
+      security:
+        - PublishableKey: []
+          StaffBearer: []
+      responses:
+        '200': { description: Administrator staff directory. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: apikey
+      description: Supabase publishable key (or legacy anon key). Never use a secret/service-role key in a browser.
+    StaffBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase Auth access token for an active OTMA staff account.
+  schemas:
+    PublicStreetlight:
+      type: object
+      properties:
+        id: { type: string, example: OTMA-SL-00001 }
+        latitude: { type: number, example: 6.7342 }
+        longitude: { type: number, example: -1.6127 }
+        community: { type: [string, 'null'] }
+        street: { type: string }
+        lampType: { type: string }
+        status: { type: string, enum: [working, faulty, under_repair, out_of_service] }
+        lastRepairedDate: { type: [string, 'null'], format: date }
+        poleHeightM: { type: [number, 'null'] }
+        wattage: { type: [integer, 'null'] }
+        poleMaterial: { type: [string, 'null'] }
+        poleCondition: { type: [string, 'null'] }
+        installationDate: { type: [string, 'null'], format: date }
+    ReportCreated:
+      type: object
+      properties:
+        ok: { type: boolean }
+        reference: { type: string, example: OTMA-RPT-2026-ABCDEFGH }
+        status: { type: string, example: received }
+        reported_at: { type: string, format: date-time }
+        sla_due_at: { type: string, format: date-time }
+        message: { type: string }
+    TrackedReportResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        report:
+          type: object
+          properties:
+            reference: { type: string }
+            status: { type: string }
+            community: { type: string }
+            street: { type: string }
+            issue: { type: string }
+            reported_at: { type: string, format: date-time }
+            resolved_at: { type: [string, 'null'], format: date-time }
+            timeline:
+              type: array
+              items:
+                type: object
+                properties:
+                  stage: { type: string }
+                  message: { type: string }
+                  created_at: { type: string, format: date-time }
+    PublicStats:
+      type: object
+      properties:
+        data_status: { type: string }
+        total_lights: { type: integer }
+        working_percentage: { type: [number, 'null'] }
+        open_faults: { type: integer }
+        repaired_this_month: { type: integer }
+        average_repair_hours: { type: [number, 'null'] }
+        status_breakdown: { type: object, additionalProperties: { type: integer } }
+        monthly:
+          type: array
+          items:
+            type: object
+            properties:
+              month: { type: string, example: '2026-11' }
+              reported: { type: integer }
+              resolved: { type: integer }
+        faults_by_community:
+          type: array
+          items:
+            type: object
+            properties:
+              community: { type: string }
+              count: { type: integer }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        details:
+          type: array
+          items: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request data.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Staff authentication is required or the session is invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The authenticated staff role is not permitted to perform this action.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Requested record was not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: The caller exceeded a short-window request limit.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PayloadTooLarge:
+      description: Uploaded photo is larger than 5 MB.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnsupportedMedia:
+      description: Photo must be JPG, PNG or WebP.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: The server could not complete the request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

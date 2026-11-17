@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#06281C">
+  <meta name="description" content="Interactive API reference for the OTMA Streetlight Portal backend.">
+  <title>OTMA API Reference — Swagger UI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.30.2/swagger-ui.css">
+  <style>
+    :root{--green:#006B3F;--night:#06281C;--gold:#FCD116;--cream:#FBF8F1;--ink:#14201A}
+    *{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font-family:"Public Sans",Arial,sans-serif}
+    .stripe{height:5px;background:linear-gradient(90deg,#CE1126 0 33.33%,#FCD116 33.33% 66.66%,#006B3F 66.66%)}
+    header{padding:28px max(22px,calc((100% - 1200px)/2));color:#fff;background:radial-gradient(circle at 88% 10%,rgba(252,209,22,.14),transparent 25%),var(--night)}
+    header small{color:var(--gold);font-weight:800;letter-spacing:.16em;font-size:.68rem}h1{margin:7px 0;font-family:Georgia,serif;font-weight:600;font-size:clamp(2rem,4vw,3rem)}header p{max-width:760px;color:#C8D8CF;margin:0;line-height:1.7;font-size:.92rem}
+    .notice{max-width:1200px;margin:18px auto;padding:12px 16px;border:1px solid #E7DFBE;border-radius:10px;color:#6C5A17;background:#FFFAE8;font-size:.82rem;line-height:1.55}
+    #swagger-ui{max-width:1240px;margin:0 auto 50px;padding:0 18px}.swagger-ui .topbar{display:none}.swagger-ui .info{margin:22px 0}.swagger-ui .scheme-container{background:#fff;box-shadow:none;border:1px solid #E8E5DB;border-radius:10px}.swagger-ui .opblock.opblock-post{border-color:#9BC8AA;background:rgba(0,107,63,.035)}.swagger-ui .opblock.opblock-post .opblock-summary-method{background:var(--green)}.swagger-ui .btn.authorize{border-color:var(--green);color:var(--green)}.swagger-ui .btn.authorize svg{fill:var(--green)}footer{padding:18px;text-align:center;color:#748078;border-top:1px solid #E6E2D8;font-size:.75rem}
+    @media(max-width:600px){header{padding:24px 18px}.notice{margin:14px 12px}}
+  </style>
+</head>
+<body>
+  <div class="stripe" aria-hidden="true"></div>
+  <header>
+    <small>OLD TAFO MUNICIPAL ASSEMBLY · BACKEND REFERENCE</small>
+    <h1>OTMA Streetlight Portal API</h1>
+    <p>Interactive reference for public reporting, reference tracking, aggregate statistics and protected Assembly workflows. Use a Supabase publishable key for public calls and a staff access token for protected calls.</p>
+  </header>
+  <div class="notice"><strong>Security notice:</strong> Never enter a Supabase secret/service-role key here. Staff calls require an access token from an active OTMA account. Replace <code>YOUR_PROJECT_REF</code> in the server selector and allow this documentation origin in <code>ALLOWED_ORIGINS</code> before using Try it out.</div>
+  <div id="swagger-ui"></div>
+  <footer>OTMA Streetlight Portal · Swagger UI · OpenAPI 3.1.0 · Prototype API reference</footer>
+  <script src="https://unpkg.com/swagger-ui-dist@5.30.2/swagger-ui-bundle.js" crossorigin></script>
+  <script>
+    window.addEventListener('load', function () {
+      window.ui = SwaggerUIBundle({
+        url: './openapi.yaml',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        displayRequestDuration: true,
+        filter: true,
+        docExpansion: 'list',
+        defaultModelsExpandDepth: 1,
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout'
+      });
+    });
+  </script>
+</body>
+</html>
