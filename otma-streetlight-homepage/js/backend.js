@@ -190,6 +190,46 @@ export async function loadAdminWorkspace() {
   return { lights, reports, users, parts, maintenance };
 }
 
+export async function saveStreetlightRecord(light) {
+  const client = await getClient();
+  const { data: community, error: communityError } = await client
+    .from("communities")
+    .select("id")
+    .eq("name", light.community)
+    .maybeSingle();
+  if (communityError) throw communityError;
+
+  const row = {
+    id: light.id,
+    latitude: Number(light.latitude),
+    longitude: Number(light.longitude),
+    community_id: community?.id ?? null,
+    street: light.street,
+    lamp_type: light.lampType,
+    status: light.status,
+    last_repaired_date: light.lastRepairedDate || null,
+    pole_height_m: light.poleHeightM ?? null,
+    wattage: light.wattage ?? null,
+    pole_material: light.poleMaterial ?? null,
+    pole_condition: light.poleCondition ?? null,
+    installation_date: light.installationDate || null,
+    asset_note: light.assetNote ?? null,
+    is_demo: false
+  };
+
+  // This operation writes only the selected streetlight. It deliberately does
+  // not persist reports, users, maintenance jobs, or spare-parts data.
+  const { data, error } = await client
+    .from("streetlights")
+    .upsert(row, { onConflict: "id" })
+    .select("id")
+    .single();
+  if (error) throw error;
+
+  baseline.lights.set(light.id, stable(light));
+  return data;
+}
+
 export async function persistAdminWorkspace(state) {
   const client = await getClient();
   const [{ data: communities, error: communityError }, { data: profiles, error: profileError }, userResult] = await Promise.all([
